@@ -1,0 +1,1652 @@
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 1   
+
+
+C51 COMPILER V9.56.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Program Files\Keil_v5\C51\BIN\C51.EXE main.c COMPACT OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND
+                    - PRINT(.\Listings\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*-------- Í·ÎÄ¼þ --------*/
+   2          #include "stc8.h"
+   3          #include "stdio.h"
+   4          #include "stdlib.h"
+   5          #include "math.h"
+   6          #include "intrins.h"
+   7          #include "string.h"
+   8          #include "variables.h"
+   9          
+  10          /*-------- ÉùÃ÷º¯Êý --------*/
+  11          //Ó²¼þ³õÊ¼»¯
+  12          void HardwareInit();
+  13          void Uart2Init();
+  14          void Uart3Init();
+  15          
+  16          //µ×²ãÓ²¼þ¿ØÖÆ£¨PWMÒÔ¼°LEDµÆ£©
+  17          void PWMLeftCon(unsigned int duty);
+  18          void PWMRightCon(unsigned int duty);
+  19          void HallCntFiltering();
+  20          void LedToogle(int n);
+  21          
+  22          //Èí¼þ³õÊ¼»¯
+  23          void VariablesInit();
+  24          
+  25          //µ×²ãÈí¼þ¿ØÖÆ
+  26          void GenerateTimeFlag();
+  27          void DelayTime(int n);
+  28          void ClearRxdBuf(); //Çå¿ÕUART½ÓÊÕ»º´æÇø
+  29          
+  30          //·¢Éä³¬Éù²¨²â¾à
+  31          void TxdData(int n);
+  32          unsigned char CheckUartRxd(); //¼ì²é½ÓÊÕµÄÖµ
+  33          bit CheckDistance(); //¼ì²é¾àÀë
+  34          void ClearMeaBuf(); //Çå¿ÕÃ¿ÂÖ²âÁ¿µÄÎ»ÖÃÖµ
+  35          void CalLocation(); //¼ÆËãÈËµÄÎ»ÖÃ£¨×ø±ê£©
+  36          void StoreLocation(); //¶ÔÃ¿Ò»ÂÖÓÐÐ§²âÁ¿µÄ×ø±êÖµ½øÐÐ´æ´¢
+  37          
+  38          //¿ØÖÆµç»úÔË¶¯
+  39          void LeftVelocityFDBK(float i_fSetV); //×óµç»úËÙ¶È·´À¡
+  40          void RightVelocityFDBK(float i_fSetV); //ÓÒµç»úËÙ¶È·´À¡
+  41          void DynamicAngleFDBK(); //¶¯Ì¬½Ç¶È·´À¡
+  42          void StaticAngleFDBK(); //¾²Ì¬½Ç¶È·´À¡
+  43          
+  44          //ºìÍâ±ÜÕÏ
+  45          void CheckObstacle(); //¼ì²âÓÐÎÞ×è°­
+  46          
+  47          //Ö÷º¯Êý//
+  48          void main()
+  49          {
+  50   1          Uart2Init();
+  51   1          Uart3Init();
+  52   1          HardwareInit();
+  53   1          VariablesInit();
+  54   1          EA = 1; //ÔÊÐí×ÜÖÐ¶Ï
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 2   
+
+  55   1          LedToogle(10); //Ï¨ÃðLEDµÆ
+  56   1          TxdData(SoundStart);
+  57   1          DelayTime(3000);
+  58   1          while(1)
+  59   1          {
+  60   2              /*-------- Ê±»ù´¦Àí --------*/
+  61   2              GenerateTimeFlag();
+  62   2              //´¦ÀíÊ±¼ä±êÖ¾Á¿
+  63   2              if(g_b10msFlag)
+  64   2              {
+  65   3                  g_b10msFlag = 0;
+  66   3              }
+  67   2              if(g_bSamplingFlag)
+  68   2              {
+  69   3                  g_bSamplingFlag = 0;
+  70   3      
+  71   3                  g_fLeftHallCurCnt = g_ucLeftHallCnt; //ÂË²¨Ç°½øÐÐ³õÊ¼»¯£¬·ÀÖ¹Êý¾Ý³ö´í
+  72   3                  g_fRightHallCurCnt = g_ucRightHallCnt;
+  73   3                  g_ucLeftHallCnt = 0;
+  74   3                  g_ucRightHallCnt = 0;
+  75   3      
+  76   3      //            HallCntFiltering(); //»ô¶û»º´æµÄÊý×ÖÂË²¨
+  77   3                  //ÓïÒô²¥±¨Çø
+  78   3                  if(g_bSingleLostFlag)
+  79   3                  {
+  80   4                      g_bSingleLostFlag = 0;
+  81   4                      TxdData(SoundSignalLost);
+  82   4                      g_ucFailureNum = 0;
+  83   4                      DelayTime(2000);
+  84   4                  }
+  85   3                  if(g_ucFailureNum > MaxFailureNum)
+  86   3                  {
+  87   4                      g_fLeftSetV = StopPWM;
+  88   4                      g_fRightSetV = StopPWM;
+  89   4                      g_bSingleLostFlag = 1;
+  90   4                  }
+  91   3                  if(g_bSoundStartFlag)
+  92   3                  {
+  93   4                      g_bSoundStartFlag = 0;
+  94   4                      TxdData(SoundStart);
+  95   4                      DelayTime(3000);
+  96   4                  }
+  97   3                  if(g_bSoundSpecialFlag)
+  98   3                  {
+  99   4                      g_bSoundSpecialFlag = 0;
+ 100   4                      TxdData(SoundSpecial);
+ 101   4                      DelayTime(3000);
+ 102   4                  }
+ 103   3                  if(g_bSoundObstacleFlag)
+ 104   3                  {
+ 105   4                      g_bSoundObstacleFlag = 0;
+ 106   4                      TxdData(SoundObstacle);
+ 107   4                      DelayTime(800);
+ 108   4                  }
+ 109   3                  if(g_b1minFlag)
+ 110   3                  {
+ 111   4                      g_b1minFlag = 0;
+ 112   4                      g_fLeftSetV = StopPWM;
+ 113   4                      g_fRightSetV = StopPWM;
+ 114   4                      if(g_b3minFlag == 0)
+ 115   4                      {
+ 116   5                          g_bSoundStartFlag = 1; //·¢ËÍ»¶Ó­ÃüÁî
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 3   
+
+ 117   5                          g_bSoundSpecialFlag = 0;
+ 118   5                      }
+ 119   4                      else if(g_b3minFlag == 1)
+ 120   4                      {
+ 121   5                          g_b3minFlag = 0;
+ 122   5                          g_bSoundSpecialFlag = 1;
+ 123   5                          g_bSoundStartFlag = 0;
+ 124   5                      }
+ 125   4                  }
+ 126   3                  CheckObstacle();
+ 127   3                  if(g_bNoObstacleFlag == 0)//ÓÐÕÏ°­
+ 128   3                  {
+ 129   4                      g_fLeftSetV = StopPWM;
+ 130   4                      g_fRightSetV = StopPWM;
+ 131   4                      g_bSoundObstacleFlag = 1;
+ 132   4                  }
+ 133   3      
+ 134   3                  g_fLeftCurV = g_fLeftHallCurCnt * 3.14 * WheelSize / 11 / 20 / T_Sampling; // ·ÖÄ¸ÖÐÊÇ¿Éµ÷½ÚµÄ
+             -Ê±¼äÖÜÆÚ£¬Èç50[ms]£¬ÕûÌåµ¥Î»m/sj; 20ÊÇ¼õËÙ±È
+ 135   3                  if(g_fLeftHallCurCnt > 0)
+ 136   3                  {
+ 137   4                      LedToogle(3);
+ 138   4                  }
+ 139   3                  LeftVelocityFDBK(g_fLeftSetV);
+ 140   3                  if(g_fLeftCurV > 0.95 * g_fLeftSetV && g_fLeftCurV < 1.05 * g_fLeftSetV)
+ 141   3                  {
+ 142   4                      LedToogle(2);
+ 143   4                  }
+ 144   3      
+ 145   3                  g_fRightCurV = g_fRightHallCurCnt * 3.14 * WheelSize / 11 / 20 / T_Sampling; // ·ÖÄ¸ÖÐÊÇ¿Éµ÷½Ú
+             -µÄÊ±¼äÖÜÆÚ£¬Èç50[ms]£¬ÕûÌåµ¥Î»m/sj; 20ÊÇ¼õËÙ±È
+ 146   3                  if(g_fRightHallCurCnt > 0)
+ 147   3                  {
+ 148   4                      LedToogle(4);
+ 149   4                  }
+ 150   3                  RightVelocityFDBK(g_fRightSetV);
+ 151   3      
+ 152   3                  if(g_fRightCurV > 0.95 * g_fRightSetV && g_fRightCurV < 1.05 * g_fRightSetV)
+ 153   3                  {
+ 154   4                      LedToogle(5);
+ 155   4                  }
+ 156   3      
+ 157   3      //            if(g_bNoObstacleFlag == 0)
+ 158   3      //            {
+ 159   3      //                g_bNoObstacleFlag = 1;
+ 160   3      //                TxdData(SoundObstacle);
+ 161   3      //                DelayTime(1000);
+ 162   3      //            }
+ 163   3              }
+ 164   2              if(g_b50msFlag)
+ 165   2              {
+ 166   3                  g_b50msFlag = 0;
+ 167   3              }
+ 168   2              if(g_b1sFlag)
+ 169   2              {
+ 170   3                  g_b1sFlag = 0;
+ 171   3              }
+ 172   2              if(g_b3sFlag)
+ 173   2              {
+ 174   3                  g_b3sFlag = 0;
+ 175   3      //            TxdData(SoundParameter); //debug
+ 176   3              }
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 4   
+
+ 177   2              if(g_b5sFlag)
+ 178   2              {
+ 179   3                  g_b5sFlag = 0;
+ 180   3              }
+ 181   2              /*-------- Í¨ÐÅ´¦Àí --------*/
+ 182   2              if(g_bWorkFlag)
+ 183   2              {
+ 184   3                  g_bWorkFlag = 0;
+ 185   3                  //ÓÐÏÞ×´Ì¬»ú²âÁ¿·¨
+ 186   3                  switch(g_ucWorkStat)
+ 187   3                  {
+ 188   4                  case WAIT_START: //µÈ´ýÐÂµÄÒ»ÂÖ²âÁ¿
+ 189   4                  {
+ 190   5                      g_ucWorkStat++;
+ 191   5                      break;
+ 192   5                  }
+ 193   4                  case START_TXD: //Æô¶¯³¬Éù²¨·¢Éä
+ 194   4                  {
+ 195   5                      ClearRxdBuf(); //Ã¿´Î·¢ËÍÖ¸ÁîÇ°Çå¿Õ»º´æ
+ 196   5                      TxdData(StartULS);
+ 197   5                      g_ucOverTimeCnt = 0;
+ 198   5                      DelayTime(DeltaTime); //ÑÓÊ±Ò»¶ÎÊ±¼ä£¬ÔÊÐíÐÅºÅ´«µÝ¹ýÀ´
+ 199   5                      g_ucWorkStat++;
+ 200   5                      break;
+ 201   5                  }
+ 202   4                  case WAIT_TXD_ACK: //µÈ´ý³¬Éù²¨T¶ËÓ¦´ð
+ 203   4                  {
+ 204   5                      if(CheckUartRxd() == TxdULSFrame)
+ 205   5                      {
+ 206   6                          g_ucWorkStat += 2; //Ìø¹ýWAIT_READ
+ 207   6                      }
+ 208   5                      else
+ 209   5                      {
+ 210   6                          g_ucOverTimeCnt += DeltaTime;
+ 211   6                          DelayTime(DeltaTime);
+ 212   6                          if(g_ucOverTimeCnt > MaxOverTime)
+ 213   6                          {
+ 214   7                              g_ucWorkStat = WAIT_START; //³¬Ê±£¬»Øµ½µÈ´ýÆô¶¯×´Ì¬
+ 215   7                          }
+ 216   6                      }
+ 217   5                      break;
+ 218   5                  }
+ 219   4                  case WAIT_READ:
+ 220   4                  {
+ 221   5                      g_ucWorkStat++;
+ 222   5                      break;
+ 223   5                  }
+ 224   4                  case START_READ:
+ 225   4                  {
+ 226   5                      ClearRxdBuf();
+ 227   5                      TxdData(FindDistance);
+ 228   5                      DelayTime(DeltaTime); //ÑÓÊ±Ò»¶ÎÊ±¼ä£¬ÔÊÐíÐÅºÅ´«µÝ¹ýÀ´
+ 229   5                      g_ucWorkStat++;
+ 230   5                      break;
+ 231   5                  }
+ 232   4                  case WAIT_READ_ACK:
+ 233   4                  {
+ 234   5                      if(CheckUartRxd() == RxdULSFrame)
+ 235   5                      {
+ 236   6                          LedToogle(0);
+ 237   6                          g_ucWorkStat++;
+ 238   6                      }
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 5   
+
+ 239   5                      else
+ 240   5                      {
+ 241   6                          g_ucOverTimeCnt += DeltaTime;
+ 242   6                          if(g_ucOverTimeCnt > MaxOverTime)
+ 243   6                          {
+ 244   7                              g_ucWorkStat = WAIT_START; //³¬Ê±£¬»Øµ½µÈ´ýÆô¶¯×´Ì¬
+ 245   7                          }
+ 246   6                      }
+ 247   5                      break;
+ 248   5                  }
+ 249   4                  case CAL_XYZ:
+ 250   4                  {
+ 251   5                      //¸ù¾ÝÒÑ¾­½ÓÊÕµ½µÄ¾àÀëÊý¾Ý¼ÆËãR¶Ë´«»ØµÄ4¸ö¾àÀë
+ 252   5                      for(g_ucTmp = 0; g_ucTmp < 4; g_ucTmp++) //¼ÆËãÕæÊµ¾àÀë
+ 253   5                      {
+ 254   6                          ga_iDistance[g_ucTmp] = 256 * ga_ucUartRxdBuf[11 + 2 * g_ucTmp] + ga_ucUartRxdBuf[10 +
+             - 2 * g_ucTmp];
+ 255   6                      }
+ 256   5                      if(CheckDistance()) //Èô¾àÀëÖµÔÚÎó²î·¶Î§ÄÚ
+ 257   5                      {
+ 258   6                          CalLocation();
+ 259   6                          StoreLocation();
+ 260   6                          LedToogle(1); //ÁÁÆðÂÌÉ«LEDµÆ
+ 261   6                          g_ucWorkStat++;
+ 262   6                          break;
+ 263   6                      }
+ 264   5                      else //Èô¾àÀëÖµ³¬³öÎó²î·¶Î§£¬ÖØÐÂ²âÁ¿
+ 265   5                      {
+ 266   6                          g_ucFailureNum++;
+ 267   6                          g_ucWorkStat = WAIT_START;
+ 268   6                          break;
+ 269   6                      }
+ 270   5                  }
+ 271   4                  case CONTROL:
+ 272   4                  {
+ 273   5                      g_ucFailureNum = 0; //¶ÔµôÏß´ÎÊýÖÃÁã
+ 274   5                      g_fSetA = 90;
+ 275   5                      if(g_bNoObstacleFlag)
+ 276   5                      {
+ 277   6                          if(g_fCurR < MinR)
+ 278   6                          {
+ 279   7                              StaticAngleFDBK();
+ 280   7                          }
+ 281   6                          else
+ 282   6                          {
+ 283   7                              DynamicAngleFDBK();
+ 284   7                          }
+ 285   6                          if(g_fCurR > 3 * MinR)
+ 286   6                          {
+ 287   7                              TxdData(SoundTooFar);
+ 288   7                          }
+ 289   6                      }
+ 290   5                      else if(g_bNoObstacleFlag == 0)//ÓÐÕÏ°­
+ 291   5                      {
+ 292   6                          g_fLeftSetV = StopPWM;
+ 293   6                          g_fRightSetV = StopPWM;
+ 294   6                          g_bSoundObstacleFlag = 1;
+ 295   6                      }
+ 296   5                      ClearMeaBuf();
+ 297   5                      g_ucWorkStat = WAIT_START;
+ 298   5                      break;
+ 299   5                  }
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 6   
+
+ 300   4                  }
+ 301   3              }
+ 302   2          }
+ 303   1      }
+ 304          
+ 305          /*-------- ÆÕÍ¨º¯Êý --------*/
+ 306          
+ 307          /******************************/
+ 308          /*-------- ±äÁ¿³õÊ¼»¯ --------*/
+ 309          /*****************************/
+ 310          void VariablesInit()
+ 311          {
+ 312   1          //ÉÏ²ãµç»ú¿ØÖÆ³õÊ¼Öµ
+ 313   1          g_fLeftSetV = 0;
+ 314   1          g_fRightSetV = 0;
+ 315   1          g_uiLeftCurDuty = 0;
+ 316   1          g_uiRightCurDuty = 0;
+ 317   1          g_fSetA = 0;
+ 318   1          g_fAngleCurError = 0;
+ 319   1          g_fAngleLastError = 0;
+ 320   1      
+ 321   1          //µ×²ãµç»ú¿ØÖÆ³õÊ¼Öµ
+ 322   1          g_ucLeftHallCnt = 0;
+ 323   1          g_ucRightHallCnt = 0;
+ 324   1          g_fLeftCurError = 0;
+ 325   1          g_fLeftLastError = 0;
+ 326   1          g_fRightCurError = 0;
+ 327   1          g_fRightLastError = 0;
+ 328   1      
+ 329   1          g_ucTmp = 0; //ÁÙÊ±±äÁ¿
+ 330   1          g_uiCnt = 0;
+ 331   1      
+ 332   1          //Ê±»ù±êÖ¾Á¿//
+ 333   1          g_b1msFlag = 0;
+ 334   1          g_b1sFlag = 0;
+ 335   1          g_b3sFlag = 0;
+ 336   1          g_bWorkFlag = 0;
+ 337   1          g_bSamplingFlag = 0;
+ 338   1          g_uiMinCnt = 0;
+ 339   1          g_uiCnt = 0;
+ 340   1          g_b1minFlag = 0;
+ 341   1          g_b3minFlag = 0;
+ 342   1      
+ 343   1          //´®¿ÚÊÕ·¢±êÖ¾Á¿//
+ 344   1          g_ucUART2SavePst = 0;
+ 345   1          g_ucWorkStat = 0;
+ 346   1          g_bUart2BusyFlag = 0;
+ 347   1          g_bUart3BusyFlag = 0;
+ 348   1      
+ 349   1          //³õÊ¼»¯¾àÀë
+ 350   1          for(g_ucTmp = 0; g_ucTmp < 4; g_ucTmp++)
+ 351   1          {
+ 352   2              ga_iDistance[g_ucTmp] = 0;
+ 353   2          }
+ 354   1          g_ucLocationSavePst = 0;
+ 355   1          g_ucFailureNum = 0;
+ 356   1      
+ 357   1          //³õÊ¼»¯×ø±ê
+ 358   1          g_fCurX = 0;
+ 359   1          g_fCurY = 0;
+ 360   1          g_fCurZ = 0;
+ 361   1          g_fCurA = 90;
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 7   
+
+ 362   1          g_fCurR = 0;
+ 363   1      
+ 364   1          //³õÊ¼»¯»ô¶û»º´æ
+ 365   1          for(g_ucTmp = 0; g_ucTmp < HallBufMaxBytes; g_ucTmp++)
+ 366   1          {
+ 367   2              ga_ucLeftHallRxdBuf[g_ucTmp] = 0;
+ 368   2              ga_ucRightHallRxdBuf[g_ucTmp] = 0;
+ 369   2          }
+ 370   1          g_ucHallSavePst = 0;
+ 371   1          g_fLeftHallCurCnt = 0;
+ 372   1          g_fRightHallCurCnt = 0;
+ 373   1      
+ 374   1          //±ÜÕÏ±êÖ¾Á¿
+ 375   1          g_bForwardFlag = 0;
+ 376   1          g_bBackwardFlag = 0;
+ 377   1          g_bLeftwardFlag = 0;
+ 378   1          g_bRightwardFlag = 0;
+ 379   1          g_bNoObstacleFlag = 1;
+ 380   1      
+ 381   1          g_bSingleLostFlag = 0;
+ 382   1          g_bSoundStartFlag = 0;
+ 383   1          g_bSoundSpecialFlag = 0;
+ 384   1      }
+ 385          /*********************************/
+ 386          /*-------- ²úÉúÊ±»ù±êÖ¾Á¿ --------*/
+ 387          /*********************************/
+ 388          void GenerateTimeFlag()
+ 389          {
+ 390   1          if(g_b1msFlag)
+ 391   1          {
+ 392   2              g_b1msFlag = 0;
+ 393   2              g_uiCnt++;
+ 394   2          }
+ 395   1          //²úÉúÊ±¼ä±êÖ¾Á¿
+ 396   1          if(g_uiCnt % T_Sampling == 0 & g_uiCnt != 0)
+ 397   1          {
+ 398   2              g_bSamplingFlag = 1;
+ 399   2          }
+ 400   1          if(g_uiCnt % T_Work == 0 & g_uiCnt != 0)
+ 401   1          {
+ 402   2              g_bWorkFlag = 1;
+ 403   2          }
+ 404   1          if(g_uiCnt % 10 == 0 & g_uiCnt != 0)
+ 405   1          {
+ 406   2              g_b10msFlag = 1;
+ 407   2          }
+ 408   1      
+ 409   1          if(g_uiCnt % 50 == 0 & g_uiCnt != 0)
+ 410   1          {
+ 411   2              g_b50msFlag = 1;
+ 412   2          }
+ 413   1          if(g_uiCnt % 100 == 0 & g_uiCnt != 0)
+ 414   1          {
+ 415   2              g_b100msFlag = 1;
+ 416   2          }
+ 417   1          if(g_uiCnt % 500 == 0 & g_uiCnt != 0)
+ 418   1          {
+ 419   2              g_b500msFlag = 1;
+ 420   2          }
+ 421   1          if(g_uiCnt % 1000 == 0 & g_uiCnt != 0)
+ 422   1          {
+ 423   2              g_b1sFlag = 1;
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 8   
+
+ 424   2          }
+ 425   1          if(g_uiCnt % 3000 == 0 & g_uiCnt != 0)
+ 426   1          {
+ 427   2              g_b3sFlag = 1;
+ 428   2          }
+ 429   1          if(g_uiCnt % 5000 == 0 & g_uiCnt != 0)
+ 430   1          {
+ 431   2              g_b5sFlag = 1;
+ 432   2          }
+ 433   1          if(g_uiCnt == 6e4)
+ 434   1      //    if(g_uiCnt % 3000 == 0 & g_uiCnt != 0)
+ 435   1          {
+ 436   2              g_b1minFlag = 1;
+ 437   2          }
+ 438   1          if(g_uiCnt > 6e4)
+ 439   1          {
+ 440   2              g_uiCnt = 0;
+ 441   2          }
+ 442   1          //²úÉú·ÖÖÓ±êÖ¾Á¿
+ 443   1          if(g_b1minFlag == 1)
+ 444   1          {
+ 445   2              g_uiMinCnt++;
+ 446   2          }
+ 447   1          if(g_uiMinCnt % 3 == 0 & g_uiMinCnt != 0)
+ 448   1          {
+ 449   2              g_b3minFlag = 1;
+ 450   2          }
+ 451   1          if(g_uiMinCnt > 250)
+ 452   1          {
+ 453   2              g_uiMinCnt = 0;
+ 454   2          }
+ 455   1      }
+ 456          /******************************************/
+ 457          /*-------- Çå¿ÕÃ¿Ò»ÂÖ²âÁ¿µÄÁÙÊ±±äÁ¿ --------*/
+ 458          /******************************************/
+ 459          void ClearMeaBuf()
+ 460          {
+ 461   1          for(g_ucTmp = 0; g_ucTmp < 4; g_ucTmp++) //Çå¿Õ¾àÀëÖµ
+ 462   1          {
+ 463   2              ga_iDistance[g_ucTmp] = 0;
+ 464   2          }
+ 465   1          g_fLeftCurV = 0;
+ 466   1          g_fRightCurV = 0;
+ 467   1          g_fCurX = 0;
+ 468   1          g_fCurY = 0;
+ 469   1          g_fCurZ = 0;
+ 470   1          g_fCurR = 0;
+ 471   1          g_fCurA = 90;
+ 472   1          g_bForwardFlag = 0;
+ 473   1          g_bBackwardFlag = 0;
+ 474   1          g_bLeftwardFlag = 0;
+ 475   1          g_bRightwardFlag = 0;
+ 476   1      }
+ 477          /***********************************/
+ 478          /*-------- ¾àÀë×î´ó²îÖµ¼ì²â --------*/
+ 479          /***********************************/
+ 480          bit CheckDistance()
+ 481          {
+ 482   1          int i_aiDstSorted[4], i_aucDstNum[4]; //Ç°Õß´Ó´óµ½Ð¡´¢´æ¾àÀëÖµ£¬ºóÕß¶ÔÓ¦´¢´æÇ°ÕßµÄULS´«¸ÐÆ÷±àºÅ
+ 483   1          int i_iRangeFull4;
+ 484   1          unsigned char i_ucTmpA, i_ucTmpB, i_ucCnt;
+ 485   1          bit i_bDistanceOK;
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 9   
+
+ 486   1          i_bDistanceOK = 0;
+ 487   1      
+ 488   1          for(i_ucTmpA = 0; i_ucTmpA < 4; i_ucTmpA++)//¶ÔAÎ»Êý½øÐÐ±éÀú
+ 489   1          {
+ 490   2              i_ucCnt = 0; //Ã¿´Î¿ªÊ¼Ê±¶Ô¼ÆÊýÆ÷ÖÃÁã
+ 491   2              for(i_ucTmpB = 0; i_ucTmpB < 4; i_ucTmpB++) //¿ªÊ¼±éÀú¼ìË÷£¬¿´ÓÐ¼¸¸öÊý±ÈAÐ¡
+ 492   2              {
+ 493   3                  if(i_ucTmpB == i_ucTmpA)
+ 494   3                      continue;
+ 495   3                  else
+ 496   3                  {
+ 497   4                      if(ga_iDistance[i_ucTmpA] > ga_iDistance[i_ucTmpB]) //Èç¹ûAÎ»Êý´óÓÚBÎ»Êý£¬Áî¼ÆÊýÆ÷¼ÓÒ»
+ 498   4                      {
+ 499   5                          i_ucCnt++;
+ 500   5                      }
+ 501   4                  }
+ 502   3              }
+ 503   2              //i_ucCnt±íÊ¾ÓÐ¼¸¸öÊý±ÈAÐ¡£¬3-i_ucCnt¿É±íÊ¾i_aiDstSortedÊý×éÖÐµÄÔªËØÐòºÅ£¨´Ó´óµ½Ð¡£©
+ 504   2              i_aiDstSorted[3 - i_ucCnt] = ga_iDistance[i_ucTmpA];
+ 505   2              i_aucDstNum[3 - i_ucCnt] = i_ucTmpA;
+ 506   2          }
+ 507   1      
+ 508   1          //½øÐÐÊý¾ÝÉ¸Ñ¡
+ 509   1          i_iRangeFull4 = i_aiDstSorted[0] - i_aiDstSorted[3]; //ÕûÌå4¸öÊý¾ÝµÄ¼«²î
+ 510   1          if(i_iRangeFull4 < DeltaDistance) //ÈôÕûÌåÊý¾Ý¶¼±È½Ï¾ùÒ»
+ 511   1          {
+ 512   2              i_bDistanceOK = 1;
+ 513   2          }
+ 514   1          return i_bDistanceOK;
+ 515   1      }
+ 516          /***************************************/
+ 517          /*-------- ¾²Ì¬µç»ú½Ç¶È·´À¡¿ØÖÆ --------*/
+ 518          /***************************************/
+ 519          void StaticAngleFDBK()
+ 520          {
+ 521   1          float i_fTurningSpeed;
+ 522   1      
+ 523   1          if(g_fAngleCurError > StaticDeltaAngle & g_fAngleCurError < 50)
+ 524   1          {
+ 525   2              i_fTurningSpeed = UltraLowSpeed;
+ 526   2          }
+ 527   1          if(g_fAngleCurError > 50 & g_fAngleCurError < 120)
+ 528   1          {
+ 529   2              i_fTurningSpeed = LowSpeed;
+ 530   2          }
+ 531   1          if(g_fAngleCurError >  120)
+ 532   1          {
+ 533   2              i_fTurningSpeed = TurningSpeed;
+ 534   2          }
+ 535   1      
+ 536   1          g_fLeftSetV = 0; //Ô¤ÉèÁãËÙ¶È£¬Ö»ÔÚÌØ¶¨Çé¿ö¸øËÙ¶È
+ 537   1          g_fRightSetV = 0;
+ 538   1      
+ 539   1          if(fabs(g_fCurX) > MinX) //ÅÅ³ýXµÄ¸ÉÈÅ
+ 540   1          {
+ 541   2              if(g_fAngleCurError > StaticDeltaAngle) //Èç¹ûµ±Ç°½Ç¶ÈºÍÄ¿±ê½Ç¶ÈÏà²î²»³¬DeltaAngle£¬ÔòÎÞ·´Ó¦
+ 542   2              {
+ 543   3                  g_fLeftSetV = abs(min(g_iSign, 0)) * i_fTurningSpeed;
+ 544   3                  g_fRightSetV = max(g_iSign, 0) * i_fTurningSpeed;
+ 545   3              }
+ 546   2          }
+ 547   1      }
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 10  
+
+ 548          /***************************************/
+ 549          /*-------- ¶¯Ì¬µç»ú½Ç¶È·´À¡¿ØÖÆ --------*/
+ 550          /***************************************/
+ 551          void DynamicAngleFDBK()
+ 552          {
+ 553   1          float i_fTurningSpeed;
+ 554   1      
+ 555   1          if(g_fAngleCurError > StaticDeltaAngle & g_fAngleCurError < 50)
+ 556   1          {
+ 557   2              i_fTurningSpeed = TurningSpeed;
+ 558   2          }
+ 559   1          if(g_fAngleCurError > 50 & g_fAngleCurError < 120)
+ 560   1          {
+ 561   2              i_fTurningSpeed = LowSpeed;
+ 562   2          }
+ 563   1          if(g_fAngleCurError >  120)
+ 564   1          {
+ 565   2              i_fTurningSpeed = UltraLowSpeed;
+ 566   2          }
+ 567   1      
+ 568   1          g_fLeftSetV = NormalSpeed; //Ô¤ÉèµÈËÙ¶È£¬Ö»ÔÚÌØ¶¨Çé¿ö¸øËÙ¶È²î
+ 569   1          g_fRightSetV = NormalSpeed;
+ 570   1      
+ 571   1          if(fabs(g_fCurX) > MinX) //ÅÅ³ýXµÄ¸ÉÈÅ
+ 572   1          {
+ 573   2              if(g_fCurR < 2 * MinR) //¾àÀëÖÐµÈ£¬±ß×ß±ä×ª
+ 574   2              {
+ 575   3                  if(g_fAngleCurError > 90) //´óÓÚ90¡ã£¬ÏÈÍ£ÔÙ×ª
+ 576   3                  {
+ 577   4                      StaticAngleFDBK();
+ 578   4                  }
+ 579   3                  else if(g_fAngleCurError > DynamicDeltaAngle) //Èç¹ûµ±Ç°½Ç¶ÈºÍÄ¿±ê½Ç¶ÈÏà²î²»³¬DeltaAngle£¬ÔòÎÞ
+             -·´Ó¦
+ 580   3                  {
+ 581   4                      if(g_iSign > 0) //Èç¹ûÔÚ¶þÏóÏÞ/×ó±ß£¬×óµç»ú¼õËÙ
+ 582   4                      {
+ 583   5                          g_fLeftSetV = i_fTurningSpeed;
+ 584   5                      }
+ 585   4                      else if(g_iSign < 0) //Èç¹ûÈËÔÚµÚÒ»ÏóÏÞ/ÓÒ±ß£¬ÓÒµç»ú¼õËÙ
+ 586   4                      {
+ 587   5                          g_fRightSetV = i_fTurningSpeed;
+ 588   5                      }
+ 589   4                  }
+ 590   3              }
+ 591   2              else if(g_fCurR > 2 * MinR) //¾àÀë½ÏÔ¶£¬ÏÈÍ£ÔÙ×ª
+ 592   2              {
+ 593   3                  g_fLeftSetV = 1.2*NormalSpeed; //Ô¤ÉèµÈËÙ¶È£¬Ö»ÔÚÌØ¶¨Çé¿ö¸øËÙ¶È²î
+ 594   3                  g_fRightSetV = 1.2*NormalSpeed;
+ 595   3                  if(g_fAngleCurError > 90) //Èç¹ûµ±Ç°½Ç¶ÈºÍÄ¿±ê½Ç¶ÈÏà²î²»³¬DeltaAngle£¬ÔòÎÞ·´Ó¦
+ 596   3                  {
+ 597   4                      StaticAngleFDBK(); //×ªÈë¾²Ì¬×ªÏòÄ£Ê½
+ 598   4                  }
+ 599   3                  else if(g_fAngleCurError > DynamicDeltaAngle) //Èç¹ûµ±Ç°½Ç¶ÈºÍÄ¿±ê½Ç¶ÈÏà²î²»³¬DeltaAngle£¬ÔòÎÞ
+             -·´Ó¦
+ 600   3                  {
+ 601   4                      if(g_iSign > 0) //Èç¹ûÔÚ¶þÏóÏÞ/×ó±ß£¬×óµç»ú¼õËÙ
+ 602   4                      {
+ 603   5                          g_fLeftSetV = 1.2 * i_fTurningSpeed;
+ 604   5                      }
+ 605   4                      else if(g_iSign < 0) //Èç¹ûÈËÔÚµÚÒ»ÏóÏÞ/ÓÒ±ß£¬ÓÒµç»ú¼õËÙ
+ 606   4                      {
+ 607   5                          g_fRightSetV = 1.2 * i_fTurningSpeed;
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 11  
+
+ 608   5                      }
+ 609   4                  }
+ 610   3      
+ 611   3      //            if(g_fAngleCurError > DynamicDeltaAngle) //Èç¹ûµ±Ç°½Ç¶ÈºÍÄ¿±ê½Ç¶ÈÏà²î²»³¬DeltaAngle£¬ÔòÎÞ·´Ó
+             -¦
+ 612   3      //            {
+ 613   3      //                StaticAngleFDBK(); //×ªÈë¾²Ì¬×ªÏòÄ£Ê½
+ 614   3      //            }
+ 615   3      //            else
+ 616   3      //            {
+ 617   3      //                g_fLeftSetV = FastSpeed; //Ô¤ÉèµÈËÙ¶È£¬Ö»ÔÚÌØ¶¨Çé¿ö¸øËÙ¶È²î
+ 618   3      //                g_fRightSetV = FastSpeed;
+ 619   3      //            }
+ 620   3              }
+ 621   2          }
+ 622   1      }
+ 623          /*******************************/
+ 624          /*-------- ºìÍâÕÏ°­¼ì²â --------*/
+ 625          /*******************************/
+ 626          void CheckObstacle()
+ 627          {
+ 628   1          if(P36 == 1)
+ 629   1          {
+ 630   2              g_bLeftwardFlag = 0;
+ 631   2          }
+ 632   1          else
+ 633   1          {
+ 634   2              g_bLeftwardFlag = 1;
+ 635   2          }
+ 636   1          if(P37 == 1)
+ 637   1          {
+ 638   2              g_bRightwardFlag = 0;
+ 639   2          }
+ 640   1          else
+ 641   1          {
+ 642   2              g_bRightwardFlag = 1;
+ 643   2          }
+ 644   1      
+ 645   1          if(g_bLeftwardFlag == 0 & g_bRightwardFlag == 0)
+ 646   1          {
+ 647   2              g_bNoObstacleFlag = 1;
+ 648   2          }
+ 649   1          else
+ 650   1          {
+ 651   2              g_bNoObstacleFlag = 0;
+ 652   2          }
+ 653   1      }
+ 654          /************************************/
+ 655          /*-------- ×óµç»úËÙ¶È·´À¡¿ØÖÆ --------*/
+ 656          /************************************/
+ 657          void LeftVelocityFDBK(float i_fSetV)
+ 658          {
+ 659   1          float k_p, k_i, k_d;
+ 660   1          float CurError, LastError, Last2Error;
+ 661   1      
+ 662   1          Last2Error = g_fLeftLastError;
+ 663   1          g_fLeftLastError = g_fLeftCurError;
+ 664   1          g_fLeftCurError = i_fSetV - g_fLeftCurV;
+ 665   1      
+ 666   1          LastError = g_fLeftLastError;
+ 667   1          CurError = g_fLeftCurError;
+ 668   1      
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 12  
+
+ 669   1          if(i_fSetV == 0)
+ 670   1          {
+ 671   2              g_uiLeftCurDuty = 10;
+ 672   2              PWMLeftCon(g_uiLeftCurDuty);
+ 673   2          }
+ 674   1          else if(i_fSetV == ConstPWM)
+ 675   1          {
+ 676   2              g_uiLeftCurDuty = ConstDuty;
+ 677   2              PWMLeftCon(g_uiLeftCurDuty);
+ 678   2          }
+ 679   1          else if(i_fSetV == StopPWM)
+ 680   1          {
+ 681   2              g_uiLeftCurDuty = 10;
+ 682   2              PWMLeftCon(g_uiLeftCurDuty);
+ 683   2          }
+ 684   1          else
+ 685   1          {
+ 686   2              k_p = K_P;
+ 687   2              k_i = K_I;
+ 688   2              k_d = K_D;
+ 689   2              g_uiLeftCurDuty += k_p * (CurError - LastError) + k_i * (CurError + LastError) / 2 + k_d * (CurErr
+             -or - 2 * LastError + Last2Error);
+ 690   2              PWMLeftCon(g_uiLeftCurDuty);
+ 691   2          }
+ 692   1      }
+ 693          /************************************/
+ 694          /*-------- ÓÒµç»úËÙ¶È·´À¡¿ØÖÆ --------*/
+ 695          /************************************/
+ 696          void RightVelocityFDBK(float i_fSetV)
+ 697          {
+ 698   1          float k_p, k_i, k_d;
+ 699   1          float CurError, LastError, Last2Error;
+ 700   1      
+ 701   1          Last2Error = g_fRightLastError;
+ 702   1          g_fRightLastError = g_fRightCurError;
+ 703   1          g_fRightCurError = i_fSetV - g_fRightCurV;
+ 704   1      
+ 705   1          LastError = g_fRightLastError;
+ 706   1          CurError = g_fRightCurError;
+ 707   1      
+ 708   1          if(i_fSetV == 0)
+ 709   1          {
+ 710   2              g_uiRightCurDuty = 10;
+ 711   2              PWMRightCon(g_uiRightCurDuty);
+ 712   2          }
+ 713   1          else if(i_fSetV == ConstPWM)
+ 714   1          {
+ 715   2              g_uiRightCurDuty = ConstDuty;
+ 716   2              PWMRightCon(g_uiRightCurDuty);
+ 717   2          }
+ 718   1          else if(i_fSetV == StopPWM)
+ 719   1          {
+ 720   2              g_uiRightCurDuty = 10;
+ 721   2              PWMRightCon(g_uiLeftCurDuty);
+ 722   2          }
+ 723   1          else
+ 724   1          {
+ 725   2              k_p = K_P;
+ 726   2              k_i = K_I;
+ 727   2              k_d = K_D;
+ 728   2              g_uiRightCurDuty += k_p * (CurError - LastError) + k_i * (CurError + LastError) / 2 + k_d * (CurEr
+             -ror - 2 * LastError + Last2Error);
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 13  
+
+ 729   2              PWMRightCon(g_uiRightCurDuty);
+ 730   2          }
+ 731   1      }
+ 732          /*********************************/
+ 733          /*-------- ¼ÆËã·¢Éä¶Ë×ø±ê --------*/
+ 734          /*********************************/
+ 735          void CalLocation()
+ 736          {
+ 737   1          float xdata i_fX1, i_fX2, i_fY1, i_fY2;
+ 738   1      
+ 739   1          //¿ªÊ¼¼ÆËã£¬ÐÂµÄÈý½ÇÐÎÃæ»ý·¨
+ 740   1          i_fY1 = (pow(ga_iDistance[0], 2) - pow(ga_iDistance[1], 2)) / 2.0 / DIS_S;
+ 741   1          i_fX1 = (pow(ga_iDistance[1], 2) - pow(ga_iDistance[2], 2)) / 2.0 / DIS_S;
+ 742   1          i_fY2 = (pow(ga_iDistance[3], 2) - pow(ga_iDistance[2], 2)) / 2.0 / DIS_S;
+ 743   1          i_fX2 = (pow(ga_iDistance[0], 2) - pow(ga_iDistance[3], 2)) / 2.0 / DIS_S;
+ 744   1      
+ 745   1          //¶ÔÊý¾Ý½øÐÐ´¦Àí
+ 746   1          g_fCurX = (i_fX1 + i_fX2) / 2.0;
+ 747   1          g_fCurY = (i_fY1 + i_fY2) / 2.0;
+ 748   1          g_fCurR = pow(g_fCurX * g_fCurX + g_fCurY * g_fCurY, 0.5);
+ 749   1          g_fCurA = atan2(g_fCurY, g_fCurX) * 180 / 3.14; //½Ç¶ÈÖµ
+ 750   1      }
+ 751          /*********************************/
+ 752          /*-------- ´æ´¢ºÏÀíµÄ×ø±êÖµ --------*/
+ 753          /*********************************/
+ 754          void StoreLocation()
+ 755          {
+ 756   1          ga_fCurXBuf[g_ucLocationSavePst] = g_fCurX;
+ 757   1          ga_fCurYBuf[g_ucLocationSavePst] = g_fCurY;
+ 758   1          g_ucLocationSavePst = (g_ucLocationSavePst + 1) & (LocationBufMaxBytes - 1); //¸ßÎ»ÆÁ±Î
+ 759   1      
+ 760   1          g_fAngleLast2Error = g_fAngleLastError;
+ 761   1          g_fAngleLastError = g_fAngleCurError;
+ 762   1          if(g_fCurX < 0)
+ 763   1          {
+ 764   2              g_iSign = 1; //×óÐý
+ 765   2              g_fAngleCurError = (g_fCurA - g_fSetA) * g_iSign;
+ 766   2              if(g_fCurY < 0)
+ 767   2              {
+ 768   3                  g_fAngleCurError = 180 + g_fCurA + 90; //Õë¶ÔµÚËÄÏóÏÞµÄ·¢Éä¶ËÎ»ÖÃ£¬¶Ô½Ç¶È½øÐÐÐÞÕý
+ 769   3              }
+ 770   2          }
+ 771   1          else
+ 772   1          {
+ 773   2              g_iSign = -1; //ÓÒÐý
+ 774   2              g_fAngleCurError = (g_fCurA - g_fSetA) * g_iSign;
+ 775   2          }
+ 776   1      }
+ 777          
+ 778          /*********************************/
+ 779          /*-------- Çå¿Õ½ÓÊÕÇø»º´æ --------*/
+ 780          /*********************************/
+ 781          void ClearRxdBuf()
+ 782          {
+ 783   1          for(g_ucTmp = 0; g_ucTmp < UARTBufMaxBytes; g_ucTmp++)
+ 784   1          {
+ 785   2              ga_ucUartRxdBuf[g_ucTmp] = 0;
+ 786   2          }
+ 787   1          g_ucUART2SavePst = 0;
+ 788   1      }
+ 789          /***********************************/
+ 790          /*-------- ÑÓÊ±º¯Êý(ms¼¶±ð) --------*/
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 14  
+
+ 791          /***********************************/
+ 792          void DelayTime(int n)
+ 793          {
+ 794   1          int this_Cnt, this_tmp;
+ 795   1          for(this_Cnt = 0; this_Cnt < n; this_Cnt++)
+ 796   1          {
+ 797   2              for(this_tmp = 0; this_tmp < 1350; this_tmp++)
+ 798   2              {
+ 799   3              }
+ 800   2          }
+ 801   1      }
+ 802          /******************************************/
+ 803          /*-------- »ô¶û´«¸ÐÆ÷Êý¾ÝµÄÊý×ÖÂË²¨ --------*/
+ 804          /******************************************/
+ 805          void HallCntFiltering()
+ 806          {
+ 807   1          unsigned char i_ucLeftNonZeroNum, i_ucRightNonZeroNum,  i_ucLeftBiggerCnt, i_ucRightBiggerCnt, i_ucTmp
+             -A, i_ucTmpB;
+ 808   1          unsigned char xdata ia_ucLeftHallSorted[HallBufMaxBytes], ia_ucRightHallSorted[HallBufMaxBytes]; //ÅÅÐ
+             -òºóµÄÊý×é
+ 809   1          int i_iLeftSum, i_iRightSum; //ÇóºÍÊý×é
+ 810   1      
+ 811   1          //»ô¶û´«¸ÐÆ÷Êý¾ÝµÄ´æ·Å
+ 812   1          ga_ucLeftHallRxdBuf[g_ucHallSavePst] = g_ucLeftHallCnt;
+ 813   1          ga_ucRightHallRxdBuf[g_ucHallSavePst] = g_ucRightHallCnt;
+ 814   1          g_ucHallSavePst = (g_ucHallSavePst + 1) & (HallBufMaxBytes - 1); //¸ßÎ»ÆÁ±Î£¬·ÀÖ¹Òç³ö
+ 815   1      
+ 816   1          //±äÁ¿³õÊ¼»¯
+ 817   1          g_fLeftHallCurCnt = g_ucLeftHallCnt; //ÂË²¨Ç°½øÐÐ³õÊ¼»¯£¬·ÀÖ¹Êý¾Ý³ö´í
+ 818   1          g_fRightHallCurCnt = g_ucRightHallCnt;
+ 819   1          i_ucLeftBiggerCnt = 0;
+ 820   1          i_ucRightBiggerCnt = 0;
+ 821   1          i_ucLeftNonZeroNum = 0; //·Ç0ÔªËØ¸öÊý
+ 822   1          i_ucRightNonZeroNum = 0; //·Ç0ÔªËØ¸öÊý
+ 823   1      
+ 824   1          //µ×²ã±äÁ¿ÖÃÁã
+ 825   1          g_ucLeftHallCnt = 0;
+ 826   1          g_ucRightHallCnt = 0;
+ 827   1      
+ 828   1          //¶Ô´æ·ÅµÄÊý¾Ý½øÐÐ´¦Àí
+ 829   1          for(i_ucTmpA = 0; i_ucTmpA < HallBufMaxBytes; i_ucTmpA++)
+ 830   1          {
+ 831   2              if(ga_ucLeftHallRxdBuf[i_ucTmpA] != 0)
+ 832   2              {
+ 833   3                  i_ucLeftNonZeroNum++;
+ 834   3              }
+ 835   2              if(ga_ucRightHallRxdBuf[i_ucTmpA] != 0)
+ 836   2              {
+ 837   3                  i_ucRightNonZeroNum++;
+ 838   3              }
+ 839   2              ia_ucLeftHallSorted[i_ucTmpA] = 0; //³õÊ¼»¯ÅÅÐòÊý×é
+ 840   2              ia_ucRightHallSorted[i_ucTmpA] = 0; //³õÊ¼»¯ÅÅÐòÊý×é
+ 841   2          }
+ 842   1      
+ 843   1          //Èç¹ûËùÓÐÔªËØ¶¼ÊÇ·ÇÁãÊý×é£¬Ôò¿ÉÒÔ¿ªÊ¼ÂË²¨ÁË£»·ñÔòÓÃÕâÒ»ÖÜÆÚµÄ¼ÆÊýÖµ×÷Îª×îÖÕ½á¹û
+ 844   1          if(i_ucLeftNonZeroNum == HallBufMaxBytes & i_ucRightNonZeroNum == HallBufMaxBytes)
+ 845   1          {
+ 846   2              i_ucLeftBiggerCnt = 0; //Ã¿´Î±éÀúÇ°±ØÐëÖÃÁã£¡
+ 847   2              i_ucRightBiggerCnt = 0;
+ 848   2              //°´´óÐ¡ÒÀ´ÎÅÅÐò
+ 849   2              for(i_ucTmpA = 0; i_ucTmpA < HallBufMaxBytes; i_ucTmpA++)
+ 850   2              {
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 15  
+
+ 851   3                  //ÅÅÐò×óµç»úHALL»º´æ
+ 852   3                  for(i_ucTmpB = 0; i_ucTmpB < HallBufMaxBytes; i_ucTmpB++)
+ 853   3                  {
+ 854   4                      //Èç¹ûAÎ»ÔªËØºÍBÎ»ÔªËØ¶¼ÊÇ·ÇÁãÔªËØ£¬Ôò½øÐÐ±È½Ï
+ 855   4                      if(ga_ucLeftHallRxdBuf[i_ucTmpA] > ga_ucLeftHallRxdBuf[i_ucTmpB])
+ 856   4                      {
+ 857   5                          i_ucLeftBiggerCnt++; //ÈôAºÅÔªËØ±ÈBºÅÔªËØ´ó£¬¼ÆÊýÆ÷+1
+ 858   5                      }
+ 859   4                  }
+ 860   3                  //±éÀúÍê±Ï£¬¿ªÊ¼½«·ÇÁãµÄAºÅÔªËØ´æÈëÅÅÐòºóµÄÊý×é£¬µÚAºÅÔªËØÔÚ·ÇÁãÔªËØÖÐ½øÐÐÅÅÐò£¬µÚ0Î»ÊÇ×î´óµÄ¡
+             -£
+ 861   3                  ia_ucLeftHallSorted[i_ucLeftNonZeroNum - 1 - i_ucLeftBiggerCnt] = ga_ucLeftHallRxdBuf[i_ucTmpA
+             -];
+ 862   3      
+ 863   3                  //ÅÅÐòÓÒµç»úHALL»º´æ
+ 864   3                  for(i_ucTmpB = 0; i_ucTmpB < HallBufMaxBytes; i_ucTmpB++)
+ 865   3                  {
+ 866   4                      //Èç¹ûAÎ»ÔªËØºÍBÎ»ÔªËØ¶¼ÊÇ·ÇÁãÔªËØ£¬Ôò½øÐÐ±È½Ï
+ 867   4                      if(ga_ucRightHallRxdBuf[i_ucTmpA] > ga_ucRightHallRxdBuf[i_ucTmpB])
+ 868   4                      {
+ 869   5                          i_ucRightBiggerCnt++; //ÈôAºÅÔªËØ±ÈBºÅÔªËØ´ó£¬¼ÆÊýÆ÷+1
+ 870   5                      }
+ 871   4                  }
+ 872   3                  //±éÀúÍê±Ï£¬¿ªÊ¼½«·ÇÁãµÄAºÅÔªËØ´æÈëÅÅÐòºóµÄÊý×é£¬µÚAºÅÔªËØÔÚ·ÇÁãÔªËØÖÐ½øÐÐÅÅÐò£¬µÚ0Î»ÊÇ×î´óµÄ¡
+             -£
+ 873   3                  ia_ucRightHallSorted[i_ucRightNonZeroNum - 1 - i_ucRightBiggerCnt] = ga_ucRightHallRxdBuf[i_uc
+             -TmpA];
+ 874   3              }
+ 875   2      
+ 876   2              //¸ù¾Ý½á¹û½«ÂË²¨½á¹û´æÈëÁÙÊ±±äÁ¿g_fLeftHallCurCnt£¬g_fRightHallCurCnt
+ 877   2              i_iLeftSum = 0;
+ 878   2              i_iRightSum = 0;
+ 879   2              for(i_ucTmpA = 1; i_ucTmpA < HallBufMaxBytes - 1; i_ucTmpA++) //´ÓµÚ2´óµÄÊý¿ªÊ¼Í³¼Æ£¬Ö±µ½µÚ2Ð¡µÄÊý
+             -£¨±Ü¿ª×î´óºÍ×îÐ¡£©
+ 880   2              {
+ 881   3                  i_iLeftSum += ia_ucLeftHallSorted[i_ucTmpA];
+ 882   3                  i_iRightSum += ia_ucRightHallSorted[i_ucTmpA];
+ 883   3              }
+ 884   2              g_fLeftHallCurCnt = 1.0 * i_iLeftSum / (HallBufMaxBytes - 2); //Êä³öÂË²¨½á¹û
+ 885   2              g_fRightHallCurCnt = 1.0 * i_iRightSum / (HallBufMaxBytes - 2);
+ 886   2          }
+ 887   1      }
+ 888          /************************************/
+ 889          /*-------- Ãæ°ü°åLEDµÆµÄ¿ØÖÆ --------*/
+ 890          /************************************/
+ 891          void LedToogle(int n)
+ 892          {
+ 893   1          //ÉÁË¸Ò»ÏÂ
+ 894   1          P20 = 0;
+ 895   1          P21 = 0;
+ 896   1          P22 = 0;
+ 897   1          P23 = 0;
+ 898   1          P24 = 0;
+ 899   1          P25 = 0;
+ 900   1          if (n == 0)
+ 901   1          {
+ 902   2              P20 = 1;
+ 903   2          }
+ 904   1          else if(n == 1)
+ 905   1          {
+ 906   2              P21 = 1;
+ 907   2          }
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 16  
+
+ 908   1          else if(n == 2)
+ 909   1          {
+ 910   2              P22 = 1;
+ 911   2          }
+ 912   1          else if(n == 3)
+ 913   1          {
+ 914   2              P23 = 1;
+ 915   2          }
+ 916   1          else if(n == 4)
+ 917   1          {
+ 918   2              P24 = 1;
+ 919   2          }
+ 920   1          else if(n == 5)
+ 921   1          {
+ 922   2              P25 = 1;
+ 923   2          }
+ 924   1          DelayTime(1);
+ 925   1          P20 = 0;
+ 926   1          P21 = 0;
+ 927   1          P22 = 0;
+ 928   1          P23 = 0;
+ 929   1          P24 = 0;
+ 930   1          P25 = 0;
+ 931   1      }
+ 932          
+ 933          /********************************/
+ 934          /*-------- PWMLeftµÄ¿ØÖÆ --------*/
+ 935          /********************************/
+ 936          void PWMLeftCon(unsigned int duty)
+ 937          //ÔöÇ¿ÐÍPWM0(×óµç»ú£©Êä³ö¿ÚÊÇP17
+ 938          {
+ 939   1          unsigned int i_iHighStart;
+ 940   1          unsigned char i_ucPCA;
+ 941   1          if(duty > 1024)
+ 942   1          {
+ 943   2              duty = 1024;
+ 944   2              g_uiLeftCurDuty = duty;
+ 945   2          }
+ 946   1          if(duty < 10)
+ 947   1          {
+ 948   2              duty = 10;
+ 949   2              g_uiLeftCurDuty = duty;
+ 950   2          }
+ 951   1          i_iHighStart = 1024 - g_uiLeftCurDuty;
+ 952   1      
+ 953   1          i_ucPCA = i_iHighStart >> 8;
+ 954   1          i_ucPCA = (i_ucPCA << 2) | (i_ucPCA << 4);
+ 955   1      
+ 956   1          CR = 0;
+ 957   1          CCON = 0x00;
+ 958   1          CMOD = 0x04; //PCA Ê±ÖÓÎªT0Òç³öÂö³å
+ 959   1          CL = 0x00;
+ 960   1          CH = 0x00;
+ 961   1      
+ 962   1          CCAPM0 = 0x42; //PCA Ä£¿é 0 Îª PWM ¹¤×÷Ä£Ê½
+ 963   1          PCA_PWM0 = 0xc0;//PCA Ä£¿é 0 Êä³ö 10 Î» PWM
+ 964   1          //Ð´Èë×°ÔØÖµ¡¢±È½ÏÖµ
+ 965   1          PCA_PWM0 |= i_ucPCA; //Ð´Èë¸ßÎ»ÖØÔØÖµÓë¸ßÎ»±È½ÏÖµ
+ 966   1          CCAP0H = i_iHighStart; //µÍÎ»ÖØÔØÖµ
+ 967   1          CCAP0L = CCAP0H; //µÍÎ»±È½ÏÖµ
+ 968   1      
+ 969   1          CR = 1; //Æô¶¯ PCA ¼ÆÊ±Æ÷
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 17  
+
+ 970   1      }
+ 971          /********************************/
+ 972          /*-------- PWMRightCon¿ØÖÆ --------*/
+ 973          /********************************/
+ 974          void PWMRightCon(unsigned int duty)
+ 975          //ÔöÇ¿ÐÍPWM1Êä³ö¿ÚÊÇP16
+ 976          {
+ 977   1          unsigned int i_iHighStart;
+ 978   1          unsigned char i_ucPCA;
+ 979   1          if(duty > 1024)
+ 980   1          {
+ 981   2              duty = 1024;
+ 982   2              g_uiRightCurDuty = duty;
+ 983   2          }
+ 984   1          if(duty < 10)
+ 985   1          {
+ 986   2              duty = 10;
+ 987   2              g_uiRightCurDuty = duty;
+ 988   2          }
+ 989   1          i_iHighStart = 1024 - g_uiRightCurDuty;
+ 990   1      
+ 991   1          i_ucPCA = i_iHighStart >> 8;
+ 992   1          i_ucPCA = (i_ucPCA << 2) | (i_ucPCA << 4);
+ 993   1      
+ 994   1          CR = 0;
+ 995   1          CCON = 0x00;
+ 996   1          CMOD = 0x04; //PCA Ê±ÖÓÎªT0Òç³öÂö³å
+ 997   1          CL = 0x00;
+ 998   1          CH = 0x00;
+ 999   1      
+1000   1          CCAPM1 = 0x42; //PCA Ä£¿é 1 Îª PWM ¹¤×÷Ä£Ê½
+1001   1          PCA_PWM1 = 0xc0;//PCA Ä£¿é 1 Êä³ö 10 Î» PWM
+1002   1          //Ð´Èë×°ÔØÖµ¡¢±È½ÏÖµ
+1003   1          PCA_PWM1 |= i_ucPCA; //Ð´Èë¸ßÎ»ÖØÔØÖµÓë¸ßÎ»±È½ÏÖµ
+1004   1          CCAP1H = i_iHighStart; //µÍÎ»ÖØÔØÖµ
+1005   1          CCAP1L = CCAP1H; //µÍÎ»±È½ÏÖµ
+1006   1      
+1007   1          CR = 1; //Æô¶¯ PCA ¼ÆÊ±Æ÷
+1008   1      }
+1009          /*********************************/
+1010          /*-------- ¼ì²é½ÓÊÜµÄÊý¾Ý --------*/
+1011          /*********************************/
+1012          unsigned char CheckUartRxd() //¼ì²éÊÇ·ñÊÇULS½ÓÊÕ¶Ë·¢»ØµÄÊý¾Ý
+1013          {
+1014   1          unsigned char k, ucData_OK;
+1015   1          ucData_OK = 0;
+1016   1          k = 0;
+1017   1          if (ga_ucUartRxdBuf[0] == 0x55) //Ö¡Í·1
+1018   1          {
+1019   2              k++;
+1020   2          }
+1021   1          if (ga_ucUartRxdBuf[1] == 0xAA) //Ö¡Í·2
+1022   1          {
+1023   2              k++;
+1024   2          }
+1025   1          if (ga_ucUartRxdBuf[2] == 0x56) //ÉÏÎ»»ú£¨STC8A£©µÄµØÖ·
+1026   1          {
+1027   2              k++;
+1028   2          }
+1029   1          if (k == 3)
+1030   1          {
+1031   2              ucData_OK = GeneralULSFrame; //ÊÇULSµÄÊý¾Ý£¬µ«²»ÖªµÀÊÇR¶Ë»¹ÊÇT¶Ë
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 18  
+
+1032   2              if (ga_ucUartRxdBuf[4] == 0x02 && ga_ucUartRxdBuf[5] == 0xD1)
+1033   2                  //T¶ËÏìÓ¦¹æÂÉ
+1034   2              {
+1035   3                  ucData_OK = TxdULSFrame;
+1036   3              }
+1037   2              if (ga_ucUartRxdBuf[4] == 0x0D)
+1038   2                  //R¶ËÏìÓ¦¹æÂÉ
+1039   2              {
+1040   3                  ucData_OK = RxdULSFrame;
+1041   3              }
+1042   2          }
+1043   1          return (ucData_OK);
+1044   1      }
+1045          /******************************/
+1046          /*-------- Ó²¼þ³õÊ¼»¯ --------*/
+1047          /*****************************/
+1048          void HardwareInit()
+1049          {
+1050   1          PIN_LGnd = 0;
+1051   1          PIN_RGnd = 0;
+1052   1      
+1053   1          //ÍÆÍìÊä³öÄ£Ê½£¬±ãÓÚµãÁÁÃæ°ü°åÉÏµÄLEDµÆ
+1054   1          P2M0 = 0xff;
+1055   1          P2M1 = 0x00;
+1056   1      
+1057   1          //Íâ²¿ÖÐ¶ÏINT0³õÊ¼»¯£¬P32
+1058   1          IT0 = 1; //INT0 ÏÂ½µÑØ´¥·¢
+1059   1          EX0 = 1; //Ê¹ÄÜINT0 ÖÐ¶Ï
+1060   1      
+1061   1          //Íâ²¿ÖÐ¶ÏINT1³õÊ¼»¯£¬P33
+1062   1          IT1 = 1; //INT1 ÏÂ½µÑØ´¥·¢
+1063   1          EX1 = 1; //Ê¹ÄÜINT1 ÖÐ¶Ï
+1064   1      
+1065   1      //    //Íâ²¿ÖÐ¶ÏINT2³õÊ¼»¯£¬P36
+1066   1      //    INTCLKO = EX2; //Ê¹ÄÜINT2 ÏÂ½µÑØÖÐ¶Ï
+1067   1      
+1068   1      //    //Íâ²¿ÖÐ¶ÏINT3³õÊ¼»¯£¬P37
+1069   1      //    INTCLKO = EX3; //Ê¹ÄÜINT3 ÏÂ½µÑØÖÐ¶Ï
+1070   1      
+1071   1          //¶¨Ê±Æ÷0ÓÃÓÚPWMÖÜÆÚµÄÑ¡Ôñ
+1072   1          AUXR |= AUXR_T0x1; //T0´¦ÓÚ²»·ÖÆµÄ£Ê½
+1073   1          TMOD |= Timer0_M0; //T0´¦ÓÚÄ£Ê½0£¬16Î»×Ô¶¯ÖØÔØ
+1074   1          TL0 = BRT0;
+1075   1          TH0 = BRT0 >> 8;
+1076   1          TF0 = 0;
+1077   1          ET0 = 1; //T0ÖÐ¶ÏÊ¹ÄÜ
+1078   1          TR0 = 1; //T1¿ªÊ¼¹¤×÷
+1079   1      
+1080   1          //¶¨Ê±Æ÷1×÷Îª1msÊ±»ùÖÐ¶ÏµÄ³õÊ¼»¯
+1081   1          //ÖØµã£ºT1Ä£Ê½µÄÑ¡Ôñ£¬ÊÇ·ñ·ÖÆµ£¬³õÊ¼¸ßµÍÎ»ÖÃ
+1082   1          AUXR |= AUXR_T1x12; //¶¨Ê±Æ÷1¹¤×÷ÔÚ12·ÖÆµ
+1083   1          TMOD |= Timer1_M0; //T1´¦ÓÚÄ£Ê½1£¬16Î»×Ô¶¯ÖØÔØ
+1084   1          TL1 = 0x66;
+1085   1          TH1 = 0xFC; //ÉèÖÃT1µÄ×Ô¶¯ÖØÔØÖµ
+1086   1          ET1 = 1; //ÔÊÐí¶¨Ê±Æ÷1´¥·¢ÖÐ¶Ï
+1087   1          TR1 = 1; //ÔÊÐí¶¨Ê±Æ÷1¿ªÊ¼¹¤×÷
+1088   1      
+1089   1          //¶¨Ê±Æ÷2ÓÃÓÚ´®¿Ú2µÄ²¨ÌØÂÊ·¢ÉúÆ÷£¬ÔÚUart2Init()ÖÐ³õÊ¼»¯
+1090   1          //¶¨Ê±Æ÷3ÓÃÓÚ´®¿Ú1µÄ²¨ÌØÂÊ·¢ÉúÆ÷£¬ÔÚUart3Init()ÖÐ³õÊ¼»¯
+1091   1      }
+1092          /*********************************/
+1093          /*-------- ´®¿Ú2µÄ³õÊ¼»¯ --------*/
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 19  
+
+1094          /*********************************/
+1095          void Uart2Init()
+1096          {
+1097   1          //ÉèÖÃ´®¿Ú2
+1098   1          S2CON = UART2_M0; //´®¿Ú2´¦ÓÚÄ£Ê½0£¬¿É±ä²¨ÌØÂÊ8Î»Êý¾Ý£»ÓÃ¶¨Ê±Æ÷2×÷²¨ÌØÂÊ·¢ÉäÆ÷
+1099   1          S2CON |= S2REN; //´®¿Ú2ÔÊÐíÊäÈë
+1100   1      
+1101   1          //ÉèÖÃ¶¨Ê±Æ÷2
+1102   1          AUXR |= AUXR_T2x12; // ¶¨Ê±Æ÷2½øÐÐ12·ÖÆµ
+1103   1          //T2¹Ì¶¨Îª16Î»ÖØÔØÄ£Ê½;
+1104   1          TL2 = BRT2;
+1105   1          TH2 = BRT2 >> 8; // ÉèÖÃ¶¨Ê±Æ÷2µÄµÍ/¸ßµØÖ·³õÖµ£¬È·¶¨²¨ÌØÂÊ2
+1106   1      
+1107   1          //¶¨Ê±Æ÷Ê¹ÄÜ
+1108   1          AUXR |= T2R; //ÔÊÐí¶¨Ê±Æ÷2¿ªÊ¼¹¤×÷
+1109   1      
+1110   1          //ÖÐ¶ÏÊ¹ÄÜ
+1111   1          IE2 |= ES2; //ÔÊÐí´®¿Ú2µÄÖÐ¶Ï
+1112   1      }
+1113          /*********************************/
+1114          /*-------- ´®¿Ú3µÄ³õÊ¼»¯ --------*/
+1115          /*********************************/
+1116          void Uart3Init()
+1117          {
+1118   1          //ÉèÖÃ´®¿Ú1
+1119   1          S3CON = UART3_M0T3; //´®¿Ú3´¦ÓÚÄ£Ê½0£¬¿É±ä²¨ÌØÂÊ8Î»Êý¾Ý£»ÓÃ¶¨Ê±Æ÷3×÷²¨ÌØÂÊ·¢ÉäÆ÷£¬ÔÊÐíÊäÈë
+1120   1      
+1121   1          //ÉèÖÃ¶¨Ê±Æ÷3
+1122   1          T3L = BRT3;
+1123   1          T3H = BRT3 >> 8;
+1124   1      
+1125   1          //¶¨Ê±Æ÷Ê¹ÄÜ
+1126   1          T4T3M = 0x0a; //1TÆµÂÊ£¨²»·ÖÆµ£©£¬Ê¹ÄÜT3
+1127   1      
+1128   1          //ÖÐ¶ÏÊ¹ÄÜ
+1129   1          IE2 |= ES3; //ÔÊÐí´®¿Ú3µÄÖÐ¶Ï
+1130   1      }
+1131          /**************************************/
+1132          /*-------- ´®¿Ú2·¢ËÍBYTEÐÍÊý¾Ý --------*/
+1133          /**************************************/
+1134          void SendByUart2(unsigned char dat)
+1135          {
+1136   1          while(g_bUart2BusyFlag); //±£³Ö¿Õ×ª£¬µÈ´ýg_bUart3BusyFlag=0£¬Òà¼´µÈ´ý´®¿ÚµÄTIÖÐ¶Ï
+1137   1          g_bUart2BusyFlag = 1; //·¢ËÍÇ°£¬½«g_bUart3BusyFlagÖÃ1
+1138   1          S2BUF = dat; //·¢ËÍÊý¾Ý£¬·¢ËÍÍê³Éºóg_bUart3BusyFlag»á±»ÖÃ0
+1139   1      }
+1140          /**************************************/
+1141          /*-------- ´®¿Ú3·¢ËÍBYTEÐÍÊý¾Ý --------*/
+1142          /**************************************/
+1143          void SendByUart3(unsigned char dat)
+1144          {
+1145   1          while(g_bUart3BusyFlag); //±£³Ö¿Õ×ª£¬µÈ´ýg_bUart3BusyFlag=0£¬Òà¼´µÈ´ý´®¿ÚµÄTIÖÐ¶Ï
+1146   1          g_bUart3BusyFlag = 1; //·¢ËÍÇ°£¬½«g_bUart3BusyFlagÖÃ1
+1147   1          S3BUF = dat; //·¢ËÍÊý¾Ý£¬·¢ËÍÍê³Éºóg_bUart3BusyFlag»á±»ÖÃ0
+1148   1      }
+1149          /****************************/
+1150          /*-------- ·¢ËÍÊý¾Ý --------*/
+1151          /****************************/
+1152          void TxdData(int mode)
+1153          {
+1154   1          unsigned char i_ucLen;
+1155   1          unsigned char i_uctmp;
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 20  
+
+1156   1          if(mode == SoundParameter)
+1157   1          {
+1158   2              char i_caTmp[20];
+1159   2              char i_caTmp1[20];
+1160   2      //        char xdata i_caText[50] = {"[v1][s8][m52]×óÕ¼¿Õ±È"};
+1161   2      //        char i_caText1[20] = {"ÓÒÕ¼¿Õ±È"};
+1162   2      //        sprintf(i_caTmp, "%3.1f", g_uiLeftCurDuty);
+1163   2      //        strcat(i_caText, i_caTmp);
+1164   2      //        sprintf(i_caTmp1, "%3.1f", g_uiRightCurDuty);
+1165   2      //        strcat(i_caText1, i_caTmp1);
+1166   2      //        strcat(i_caText, i_caText1);
+1167   2      
+1168   2      //        char xdata i_caText[50] = {"[v1][s8][m52]×óËÙ¶È"};
+1169   2      //        char i_caText1[20] = {"ÓÒËÙ¶È"};
+1170   2      //        sprintf(i_caTmp, "%0.3f", g_fLeftCurV);
+1171   2      //        strcat(i_caText, i_caTmp);
+1172   2      //        sprintf(i_caTmp1, "%0.3f", g_fRightCurV);
+1173   2      //        strcat(i_caText1, i_caTmp1);
+1174   2      //        strcat(i_caText, i_caText1);
+1175   2      
+1176   2      //        char xdata i_caText[50] = {"[v1][s9][m52]×ó»ô¶û"};
+1177   2      //        char xdata i_caText1[20] = {"ÓÒ»ô¶û"};
+1178   2      //        sprintf(i_caTmp, "%2.1f", g_fLeftHallCurCnt);
+1179   2      //        strcat(i_caText, i_caTmp);
+1180   2      //        sprintf(i_caTmp1, "%2.1f", g_fRightHallCurCnt);
+1181   2      //        strcat(i_caText1, i_caTmp1);
+1182   2      //        strcat(i_caText, i_caText1);
+1183   2      
+1184   2      //        char i_caText[40] = {"[v1][s8][m52]X×ø±ê"};
+1185   2      //        char i_caText1[20] = {"Y×ø±ê"};
+1186   2      //        sprintf(i_caTmp, "%4.0f", g_fCurX);
+1187   2      //        strcat(i_caText, i_caTmp);
+1188   2      //        sprintf(i_caTmp1, "%4.0f", g_fCurY);
+1189   2      //        strcat(i_caText1, i_caTmp1);
+1190   2      //        strcat(i_caText, i_caText1);
+1191   2      
+1192   2              char i_caText[40] = {"[v1][s8][m52]¾àÀë"};
+1193   2              char i_caText1[20] = {"½Ç¶È"};
+1194   2              sprintf(i_caTmp, "%4.0f", g_fCurR);
+1195   2              strcat(i_caText, i_caTmp);
+1196   2              sprintf(i_caTmp1, "%3.1f", g_fCurA);
+1197   2              strcat(i_caText1, i_caTmp1);
+1198   2              strcat(i_caText, i_caText1);
+1199   2      
+1200   2      //        char xdata i_caText[50] = {"[v1][s9][m52]ÁãÍ¨µÀ"};
+1201   2      //        char xdata i_caText1[20] = {"£¬Ò»Í¨µÀ"};
+1202   2      //        char xdata i_caText2[20] = {"£¬¶þÍ¨µÀ"};
+1203   2      //        char xdata i_caText3[20] = {"£¬ÈýÍ¨µÀ"};
+1204   2      //        sprintf(i_caTmp, "%u", ga_iDistance[0]);
+1205   2      //        strcat(i_caText, i_caTmp);
+1206   2      //        sprintf(i_caTmp1, "%u", ga_iDistance[1]);
+1207   2      //        strcat(i_caText1, i_caTmp1);
+1208   2      //        strcat(i_caText, i_caText1);
+1209   2      //        sprintf(i_caTmp, "%u", ga_iDistance[2]);
+1210   2      //        strcat(i_caText2, i_caTmp);
+1211   2      //        sprintf(i_caTmp1, "%u", ga_iDistance[3]);
+1212   2      //        strcat(i_caText3, i_caTmp1);
+1213   2      //        strcat(i_caText2, i_caText3);
+1214   2      //        strcat(i_caText, i_caText2);
+1215   2      
+1216   2              i_ucLen = strlen(i_caText);
+1217   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 21  
+
+1218   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1219   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1220   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1221   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1222   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1223   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1224   2              {
+1225   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1226   3              }
+1227   2      
+1228   2              i_ucLen = strlen(i_caText);
+1229   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1230   2              {
+1231   3                  SendByUart3(i_caText[i_uctmp]);
+1232   3              }
+1233   2          }
+1234   1          else if (mode == SoundSignalLost) //ÓïÒôÄ£¿é·¢Éù
+1235   1          {
+1236   2              char i_caText[] = {"[v3][s9][m51]Á¹Á¹ÐÅºÅ¶ªÊ§£¡"};
+1237   2              i_ucLen = strlen(i_caText);
+1238   2      
+1239   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1240   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1241   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1242   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1243   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1244   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1245   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1246   2              {
+1247   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1248   3              }
+1249   2      
+1250   2              i_ucLen = strlen(i_caText);
+1251   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1252   2              {
+1253   3                  SendByUart3(i_caText[i_uctmp]);
+1254   3              }
+1255   2          }
+1256   1      
+1257   1          else  if (mode == SoundStart) //Æô¶¯
+1258   1          {
+1259   2              char i_caText[] = {"[v3][s9][m3]»¶Ó­Ê¹ÓÃB39Õ¹Î»µÄÐ¡³µ£¬Ï²»¶Çë¸øB39Í¶Æ±"};
+1260   2      //        char xdata i_caText[] = {"[v2][s9][m3]½»´óÊ×¿îÖÇÄÜ¸úËæÐ¡³µÉÏÏßÀ²£¡ÖÇÄÜÐ¡³µÁé»îÒÆ¶¯£¬ÅãÄúàË·­Ìì£¬
+             -¸øÄú²»Ò»ÑùµÄ¸úËæÌåÑé£¡"};
+1261   2              i_ucLen = strlen(i_caText);
+1262   2      
+1263   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1264   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1265   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1266   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1267   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1268   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1269   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1270   2              {
+1271   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1272   3              }
+1273   2      
+1274   2              i_ucLen = strlen(i_caText);
+1275   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1276   2              {
+1277   3                  SendByUart3(i_caText[i_uctmp]);
+1278   3              }
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 22  
+
+1279   2          }
+1280   1          else  if (mode == SoundTooFar) //ÓïÒôÄ£¿é·¢Éù
+1281   1          {
+1282   2              char i_caText[] = {"[v3][s9][m52]Ì«Ô¶ÁË£¬ÇëµÈµÈÎÒ¡£"};
+1283   2              i_ucLen = strlen(i_caText);
+1284   2      
+1285   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1286   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1287   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1288   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1289   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1290   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1291   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1292   2              {
+1293   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1294   3              }
+1295   2      
+1296   2              i_ucLen = strlen(i_caText);
+1297   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1298   2              {
+1299   3                  SendByUart3(i_caText[i_uctmp]);
+1300   3              }
+1301   2          }
+1302   1          else  if (mode == SoundObstacle) //ÓïÒôÄ£¿é·¢Éù
+1303   1          {
+1304   2              char xdata i_caText[] = {"[v3][s9][m3]Ç°·½ÓÐÕÏ°­"};
+1305   2              i_ucLen = strlen(i_caText);
+1306   2      
+1307   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1308   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1309   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1310   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1311   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1312   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1313   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1314   2              {
+1315   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1316   3              }
+1317   2      
+1318   2              i_ucLen = strlen(i_caText);
+1319   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1320   2              {
+1321   3                  SendByUart3(i_caText[i_uctmp]);
+1322   3              }
+1323   2          }
+1324   1          else  if (mode == SoundSpecial) //ÓïÒôÄ£¿é·¢Éù
+1325   1          {
+1326   2              char xdata i_caText[120] = {"[v3][s9][m3]½»´óÊ×¿îÖÇÄÜ¸úËæÐ¡³µÉÏÏßÀ²£¡ÖÇÄÜÐ¡³µÁé»îÒÆ¶¯£¬ÅãÄúàË·­Ìì£
+             -¬¸øÄú²»Ò»ÑùµÄ¸úËæÌåÑé£¡"};
+1327   2              i_ucLen = strlen(i_caText);
+1328   2      
+1329   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1330   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1331   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1332   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1333   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1334   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1335   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1336   2              {
+1337   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1338   3              }
+1339   2      
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 23  
+
+1340   2              i_ucLen = strlen(i_caText);
+1341   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1342   2              {
+1343   3                  SendByUart3(i_caText[i_uctmp]);
+1344   3              }
+1345   2          }
+1346   1          else  if (mode == SoundSignalGot) //ÓïÒôÄ£¿é·¢Éù
+1347   1          {
+1348   2              char i_caText[] = {"[v2][s9][m52]ÊÕµ½ÐÅºÅ"};
+1349   2              i_ucLen = strlen(i_caText);
+1350   2      
+1351   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1352   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1353   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1354   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1355   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1356   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1357   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1358   2              {
+1359   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1360   3              }
+1361   2      
+1362   2              i_ucLen = strlen(i_caText);
+1363   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1364   2              {
+1365   3                  SendByUart3(i_caText[i_uctmp]);
+1366   3              }
+1367   2          }
+1368   1          else  if (mode == SoundLeft) //ÓïÒôÄ£¿é·¢Éù
+1369   1          {
+1370   2              char i_caText[] = {"[v3][s10][m52]×ó"};
+1371   2              i_ucLen = strlen(i_caText);
+1372   2      
+1373   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1374   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1375   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1376   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1377   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1378   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1379   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1380   2              {
+1381   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1382   3              }
+1383   2      
+1384   2              i_ucLen = strlen(i_caText);
+1385   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1386   2              {
+1387   3                  SendByUart3(i_caText[i_uctmp]);
+1388   3              }
+1389   2          }
+1390   1          else  if (mode == SoundRight) //ÓïÒôÄ£¿é·¢Éù
+1391   1          {
+1392   2              char i_caText[] = {"[v3][s10][m52]ÓÒ"};
+1393   2              i_ucLen = strlen(i_caText);
+1394   2      
+1395   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1396   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1397   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1398   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1399   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1400   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1401   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 24  
+
+1402   2              {
+1403   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1404   3              }
+1405   2      
+1406   2              i_ucLen = strlen(i_caText);
+1407   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1408   2              {
+1409   3                  SendByUart3(i_caText[i_uctmp]);
+1410   3              }
+1411   2          }
+1412   1          else  if (mode == SoundStraight) //ÓïÒôÄ£¿é·¢Éù
+1413   1          {
+1414   2              char i_caText[] = {"[v3][s10][m52]Ö±"};
+1415   2              i_ucLen = strlen(i_caText);
+1416   2      
+1417   2              ga_ucUartTxdBuf[0] = 0xFD; //Ö¡Í·
+1418   2              ga_ucUartTxdBuf[1] = 0x00; //³¤¶È¸ß×Ö½Ú
+1419   2              ga_ucUartTxdBuf[2] = i_ucLen + 2; //³¤¶ÈµÍ×Ö½Ú
+1420   2              ga_ucUartTxdBuf[3] = 0x01; //ÃüÁî×Ö
+1421   2              ga_ucUartTxdBuf[4] = 0x00; //±àÂë¸ñÊ½
+1422   2              i_ucLen = strlen(ga_ucUartTxdBuf);
+1423   2              for(i_uctmp = 0; i_uctmp < 5; i_uctmp++)
+1424   2              {
+1425   3                  SendByUart3(ga_ucUartTxdBuf[i_uctmp]);
+1426   3              }
+1427   2      
+1428   2              i_ucLen = strlen(i_caText);
+1429   2              for(i_uctmp = 0; i_uctmp < i_ucLen; i_uctmp++)
+1430   2              {
+1431   3                  SendByUart3(i_caText[i_uctmp]);
+1432   3              }
+1433   2          }
+1434   1          else
+1435   1          {
+1436   2              ga_ucUartTxdBuf[0] = 0x55; //Ö¡Í·1
+1437   2              ga_ucUartTxdBuf[1] = 0xAA; //Ö¡Í·2
+1438   2              ga_ucUartTxdBuf[3] = 0x56; //STC8AµÄµØÖ·£¬Îª¹Ì¶¨Öµ
+1439   2      
+1440   2              if (mode == FindDistance) //Ïò½ÓÊÕ¶Ë²éÕÒ¾àÀë
+1441   2              {
+1442   3                  ga_ucUartTxdBuf[2] = 0x10; //
+1443   3                  ga_ucUartTxdBuf[4] = 0x02; //
+1444   3                  ga_ucUartTxdBuf[5] = 0x63; //
+1445   3                  ga_ucUartTxdBuf[6] = 0x01; //
+1446   3                  ga_ucUartTxdBuf[7] = 0x9B; //
+1447   3                  for(i_uctmp = 0; i_uctmp < 8; i_uctmp++)
+1448   3                  {
+1449   4                      SendByUart2(ga_ucUartTxdBuf[i_uctmp]);
+1450   4                  }
+1451   3              }
+1452   2              else if (mode == FindTemperature) //Ïò½ÓÊÕ¶Ë²éÕÒÎÂ¶È
+1453   2              {
+1454   3                  ga_ucUartTxdBuf[2] = 0x10;
+1455   3                  ga_ucUartTxdBuf[3] = 0x56;
+1456   3                  ga_ucUartTxdBuf[4] = 0x02;
+1457   3                  ga_ucUartTxdBuf[5] = 0x52;
+1458   3                  ga_ucUartTxdBuf[6] = 0x01;
+1459   3                  ga_ucUartTxdBuf[7] = 0xAC;
+1460   3                  for(i_uctmp = 0; i_uctmp < 8; i_uctmp++)
+1461   3                  {
+1462   4                      SendByUart2(ga_ucUartTxdBuf[i_uctmp]);
+1463   4                  }
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 25  
+
+1464   3              }
+1465   2              else if (mode == StartULS) //Ïò·¢Éä¶ËÆô¶¯³¬Éù²¨·¢ËÍ
+1466   2              {
+1467   3                  ga_ucUartTxdBuf[2] = 0xF1;
+1468   3                  ga_ucUartTxdBuf[3] = 0x56;
+1469   3                  ga_ucUartTxdBuf[4] = 0x02;
+1470   3                  ga_ucUartTxdBuf[5] = 0x51;
+1471   3                  ga_ucUartTxdBuf[6] = 0x20;
+1472   3                  ga_ucUartTxdBuf[7] = 0x8E;
+1473   3                  for(i_uctmp = 0; i_uctmp < 8; i_uctmp++)
+1474   3                  {
+1475   4                      SendByUart2(ga_ucUartTxdBuf[i_uctmp]);
+1476   4                  }
+1477   3              }
+1478   2          }
+1479   1      }
+1480          /*-------- ÖÐ¶Ï´¦Àí --------*/
+1481          /*********************************************/
+1482          /*-------- Íâ²¿ÖÐ¶Ï0£¨×óµç»ú»ô¶ûAÏà£© --------*/
+1483          /*********************************************/
+1484          void External0_Int(void) interrupt 0 using 1
+1485          //Íâ²¿ÖÐ¶Ï0 INT0¶ÔÓ¦P3.2¿Ú
+1486          {
+1487   1          //¸ßÎ»ÆÁ±Î£¬·ÀÖ¹Òç³ö
+1488   1          g_ucLeftHallCnt = min(g_ucLeftHallCnt + 1, 255);
+1489   1      }
+1490          /*********************************************/
+1491          /*-------- Íâ²¿ÖÐ¶Ï1£¨ÓÒµç»ú»ô¶ûAÏà£© --------*/
+1492          /*********************************************/
+1493          void External1_Int(void) interrupt 2 using 1
+1494          //Íâ²¿ÖÐ¶Ï1 INT1¶ÔÓ¦P3.3¿Ú
+1495          {
+1496   1          //¸ßÎ»ÆÁ±Î£¬·ÀÖ¹Òç³ö
+1497   1          g_ucRightHallCnt = min(g_ucRightHallCnt + 1, 255);
+1498   1      }
+1499          ///************************************************/
+1500          ///*-------- Íâ²¿ÖÐ¶Ï2£¨×óÉÏ½ÇºìÍâ´«¸ÐÆ÷£© --------*/
+1501          ///***********************************************/
+1502          //void External2_Int(void) interrupt 10 using 1
+1503          ////Íâ²¿ÖÐ¶Ï2 INT2¶ÔÓ¦P3.6¿Ú
+1504          //{
+1505          //    g_bLeftwardFlag = 1;
+1506          //}
+1507          ///************************************************/
+1508          ///*-------- Íâ²¿ÖÐ¶Ï3£¨ÓÒÉÏ½ÇºìÍâ´«¸ÐÆ÷£© --------*/
+1509          ///***********************************************/
+1510          //void External3_Int(void) interrupt 11 using 1
+1511          ////Íâ²¿ÖÐ¶Ï2 INT2¶ÔÓ¦P3.6¿Ú
+1512          //{
+1513          //    g_bRightwardFlag = 1;
+1514          //}
+1515          /*********************************************/
+1516          /*-------- ¶¨Ê±Æ÷0Ê±»ùÖÐ¶Ï£¨PWMÖÜÆÚ£© --------*/
+1517          /*********************************************/
+1518          void Timer0_Int(void) interrupt 1 using 2
+1519          {
+1520   1      
+1521   1      }
+1522          /*********************************************/
+1523          /*-------- ¶¨Ê±Æ÷1Ê±»ùÖÐ¶Ï£¨1msÒ»´Î£© --------*/
+1524          /*********************************************/
+1525          void Timer1_Int(void) interrupt 3 using 2
+C51 COMPILER V9.56.0.0   MAIN                                                              01/13/2018 13:17:45 PAGE 26  
+
+1526          {
+1527   1          g_b1msFlag = 1;
+1528   1      }
+1529          /*********************************************/
+1530          /*-------- ´®¿Ú3µÄÖÐ¶Ï£¨ÊÕ·¢´¦Àí£© --------*/
+1531          /*********************************************/
+1532          void UART3_Int(void) interrupt 17 using 1
+1533          {
+1534   1          if(S3CON & S3RI)
+1535   1          {
+1536   2              S3CON &= ~S3RI;
+1537   2          }
+1538   1          if(S3CON & S3TI)
+1539   1          {
+1540   2              S3CON &= ~S3TI;
+1541   2              g_bUart3BusyFlag = 0;
+1542   2          }
+1543   1      }
+1544          /*********************************************/
+1545          /*-------- ´®¿Ú2µÄÖÐ¶Ï£¨ÊÕ·¢´¦Àí£© --------*/
+1546          /*********************************************/
+1547          void UART2_Int(void) interrupt 8 using 1
+1548          {
+1549   1          if(S2CON & S2RI)
+1550   1          {
+1551   2              S2CON &= ~S2RI;
+1552   2              ga_ucUartRxdBuf[g_ucUART2SavePst] = S2BUF;
+1553   2              g_ucUART2SavePst  = (g_ucUART2SavePst + 1) & (UARTBufMaxBytes - 1); // ÀûÓÃÆÁ±Î¸ßÎ»µÄ·½Ê½ÊµÏÖÖ¸ÕëµÄ
+             -»·ÐÎ´¦Àí
+1554   2          }
+1555   1          if(S2CON & S2TI)
+1556   1          {
+1557   2              S2CON &= ~S2TI;
+1558   2              g_bUart2BusyFlag = 0;
+1559   2          }
+1560   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   8537    ----
+   CONSTANT SIZE    =    399    ----
+   XDATA SIZE       =    304     175
+   PDATA SIZE       =     16     194
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =     23       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
